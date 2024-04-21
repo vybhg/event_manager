@@ -28,5 +28,5 @@ class TokenData(BaseModel):
         }
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(..., description="The refresh token used to obtain a new access token.")
 
