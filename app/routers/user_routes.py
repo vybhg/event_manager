@@ -55,6 +55,9 @@ async def get_user(user_id: UUID, request: Request, db: AsyncSession = Depends(g
         id=user.id,
         username=user.username,
         email=user.email,
+        full_name=user.full_name,
+        bio=user.bio,
+        profile_picture_url=user.profile_picture_url,
         last_login_at=user.last_login_at,
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -76,10 +79,26 @@ async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, 
     - **user_id**: UUID of the user to update.
     - **user_update**: UserUpdate model with updated user information.
     """
+     user = await UserService.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user_update.email != user.email:
+        user_with_existing_email = await UserService.get_by_email(db, user_update.email)
+        if user_with_existing_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
+            
     user_data = user_update.model_dump(exclude_unset=True)
     updated_user = await UserService.update(db, user_id, user_data)
     if not updated_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+         user = await UserService.get_by_id(db, user_id)
+    if not user:
+           raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user")
+
+    if user_update.email != user.email:
+        user_with_existing_email = await UserService.get_by_email(db, user_update.email)
+        if user_with_existing_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
 
     return UserResponse.model_construct(
         id=updated_user.id,
@@ -128,7 +147,11 @@ async def create_user(user: UserCreate, request: Request, db: AsyncSession = Dep
     """
     existing_user = await UserService.get_by_username(db, user.username)
     if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already in use")
+
+    existing_email = await UserService.get_by_email(db, user.email)
+    if existing_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
     
     created_user = await UserService.create(db, user.model_dump())
     if not created_user:
@@ -151,6 +174,12 @@ async def create_user(user: UserCreate, request: Request, db: AsyncSession = Dep
 
 @router.get("/users/", response_model=UserListResponse, name="list_users", tags=["User Management"])
 async def list_users(request: Request, skip: int = 0, limit: int = 10, db: AsyncSession = Depends(get_async_db), token: str = Depends(oauth2_scheme)):
+    if skip < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Skip integer cannot be less than 0")
+
+    if not limit > 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Limit integer must be more than 1")
+
     total_users = await UserService.count(db)
     users = await UserService.list_users(db, skip=skip, limit=limit)
 
@@ -184,7 +213,7 @@ async def register(user_data: UserCreate, session: AsyncSession = Depends(get_as
     user = await UserService.register_user(session, user_data.dict())
     if user:
         return user
-    raise HTTPException(status_code=400, detail="Username already exists")
+      raise HTTPException(status_code=400, detail="Username or Email already in use")
 
 @router.post("/login/")
 async def login(login_request: LoginRequest, session: AsyncSession = Depends(get_async_db)):
