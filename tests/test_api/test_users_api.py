@@ -7,7 +7,18 @@ from app.utils.security import hash_password  # Import your FastAPI app
 
 # Example of a test function using the async_client fixture
 @pytest.mark.asyncio
-async def test_create_user(async_client):
+async def test_register_user_duplicate_email(async_client, user):
+    user_data = {
+        "username": "UniqueUsername",
+        "email": user.email,
+        "password": "AnotherPassword123!",
+    }
+    response = await async_client.post("/register/", json=user_data)
+    assert response.status_code == 400
+    assert "Username or Email already in use" in response.json().get("detail", "")
+
+@pytest.mark.asyncio
+async def test_register_user_duplicate_username(async_client, user):
     form_data = {
         "username": "admin",
         "password": "secret",
@@ -77,7 +88,7 @@ async def test_create_user_duplicate_username(async_client, user):
     }
     response = await async_client.post("/register/", json=user_data)
     assert response.status_code == 400
-    assert "Username already exists" in response.json().get("detail", "")
+    assert "Username or Email already in use" in response.json().get("detail", "")
 
 @pytest.mark.asyncio
 async def test_create_user_invalid_email(async_client):
